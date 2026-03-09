@@ -1,0 +1,268 @@
+library(fpp3)
+library(readr)
+
+data <- read_csv("BirthsAndFertilityRatesAnnual.csv")
+
+# very basic visual inspections of the data
+library(ggplot2)
+
+process_year_values <- function(x) {
+  ifelse(x == "na", NA, as.numeric(x)) # some values in the year columns are "na"
+}                                     # so we need to convert them to NA
+
+# We want the data to be in the form
+# Timeseries, year, value
+# Hence the data needs to be expanded as currently its in the form:
+# timeseries, 2025 value, 2024 value, ..., 1960  value
+
+# long format
+data_long <- data %>%
+  pivot_longer(
+    cols = -DataSeries,
+    names_to = "Year",
+    values_to = "Value",
+    values_transform = list(Value = as.character)
+  ) %>%
+  mutate(Year = as.integer(Year), Value = process_year_values(Value)) %>%
+  filter(Year <= 2024) 
+
+  
+# pull out the two series early and rename nicely
+tlb <- data_long %>%
+  filter(DataSeries == "Total Live-Births") %>%
+  select(Year, TLB = Value) %>%
+  as_tsibble(index = Year)
+
+tfr <- data_long %>%
+  filter(DataSeries == "Total Fertility Rate (TFR)") %>%
+  select(Year, TFR = Value) %>%
+  as_tsibble(index = Year)
+
+
+# Now I wanna create a dual axis graph of TLB and TFR over time so I need a scaling factor
+# I need to put the data in year, tfr value, tlb value first
+
+data_wide <- left_join(tlb, tfr, by = "Year")
+
+
+scale_factor <- max(data_wide$TLB, na.rm = TRUE) / max(data_wide$TFR, na.rm = TRUE)
+
+ggplot(data_wide, aes(x = Year)) +
+  geom_line(aes(y = TLB, colour = "TLB"), linewidth = 1) +
+  geom_line(aes(y = TFR * scale_factor, colour = "TFR"),
+            linewidth = 1) +
+  scale_y_continuous(name = "Total Live Births",
+                     sec.axis = sec_axis( ~ . / scale_factor, name = "Total Fertility Rate")) +
+  scale_colour_manual(name = NULL,
+                      values = c("TLB" = "red", "TFR" = "blue")) +
+  labs(x = "Year") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.title.y = element_text(color = "red"),
+    axis.title.y.right = element_text(color = "blue")
+  )
+
+
+# The presence trend is easy to spot via visual inspection of this dual axis graph
+# Since the data is not monthly or quarterly we are unlikely to spot any seasonal trends
+
+
+# To further understand the dependence structure of both time series,
+# I've decided to plot and analyse the partial auto correlation function and
+# auto correlation functions
+
+tlb %>% ACF(TLB) %>% autoplot() + labs(title = "ACF of TLB")
+tlb %>% PACF(TLB) %>% autoplot() + labs(title = "PACF of TLB")
+
+tfr %>% ACF(TFR) %>% autoplot() + labs(title = "ACF of TFR")
+tfr %>% PACF(TFR) %>% autoplot() + labs(title = "PACF of TFR")
+
+# The ACFs for both time series show a substantial number of autocorrelations 
+# outside the 95% significance bounds. This supports the earlier conclusion from 
+# visual inspection that both series are non-stationary. In particular, both ACFs 
+# decay slowly across many lags, which is consistent with strong persistence in 
+# trending series. The TLB ACF appears to decay slightly faster than the TFR ACF.
+
+# The PACFs for both time series show a significant value at lag 1, followed by 
+# non-significant values at higher lags. This suggests that most of the direct 
+# dependence is concentrated at lag 1.
+
+
+
+# Next differencing was used to transform the annual series into year-to-year 
+# changes, reducing the effect of the long-run trend and allowing the remaining 
+# temporal dependence to be assessed more clearly.
+
+# To determine the appropriate number of differences, I ran a formal test and
+# applied the results.
+
+tlb %>% features(TLB, unitroot_ndiffs) # = 1
+tfr %>% features(TFR, unitroot_ndiffs) # = 2
+
+
+tlb_differenced <- tlb %>%
+  mutate(D_TLB = difference(TLB, lag = 1)) %>%
+  filter(!is.na(D_TLB))
+
+tfr_differenced <- tfr %>%
+  mutate(
+    D_TFR = difference(TFR, lag = 1),
+    DD_TFR = difference(D_TFR, lag = 1)
+  ) %>%
+  filter(!is.na(DD_TFR))
+
+# differenced series plots
+autoplot(tlb_differenced, D_TLB) +
+  labs(title = "First-differenced TLB", y = "Change in TLB")
+
+autoplot(tfr_differenced, DD_TFR) +
+  labs(title = "Second-differenced TFR", y = "Second difference in TFR")
+
+# Upon visual inspection of these graphs, the both series seemed shows promising results
+# for their respected number of recommended differences.
+# It has appeared to mostly remove the trend seen previously, and aside from the spike
+# observed in 1988, the fluctuations appear mostly random.
+
+# Next looking at the ACFs and PACFs
+
+tlb_differenced %>%
+  ACF(D_TLB) %>%
+  autoplot() +
+  labs(title = "ACF of first-differenced TLB")
+
+tfr_differenced %>%
+  ACF(DD_TFR) %>%
+  autoplot() +
+  labs(title = "ACF of second-differenced TFR")
+
+tlb_differenced %>%
+  PACF(D_TLB) %>%
+  autoplot() +
+  labs(title = "PACF of first-differenced TLB")
+
+
+tfr_differenced %>%
+  PACF(DD_TFR) %>%
+  autoplot() +
+  labs(title = "PACF of second-differenced TFR")
+
+# The ACFs of the differenced TLB and TFR have largely improved, with fewer values
+# outside the 95% confidence bounds.
+
+# The PACFs echo the ACF results, with both series responding better to differencing. 
+# In both cases, the lag structure is more irregular than in  the original series, 
+# though the TFR still shows some values outside the confidence bounds.
+
+# I wanted to confirm my visual observations by running another formal test
+
+tlb %>% features(TLB, unitroot_kpss) # p = 0.01
+tlb_differenced %>% features(D_TLB, unitroot_kpss) # p = 0.1
+
+tfr %>% features(TFR, unitroot_kpss) # p = 0.01
+tfr_differenced %>% features(DD_TFR, unitroot_kpss) # p = 0.1
+
+# Overall, these results suggest that differencing is likely to be more appropriate
+# than modelling the raw series directly, particularly for TLB.
+
+# Next I moved onto modelling the time series. Given my previous result,
+# if I'm trying to fit an ARIMA model I'm excepting a difference of 1 and 2.
+# So I tried some different variations of autoregressive and moving average
+# parameters, as well as looking at what auto arima parameters might return.
+
+tlb_fit <- tlb_train %>% model(
+  arima_auto = ARIMA(TLB), # p= 0, d= 1, q= 0
+  arima_110 = ARIMA(TLB ~ pdq(1, 1, 0)),
+  #arima_011 = ARIMA(TLB ~ pdq(0, 1, 1)), removed because auto
+  arima_111 = ARIMA(TLB ~ pdq(1, 1, 1))
+) 
+
+tfr_fit <- tfr_train %>% model(
+  arima_auto = ARIMA(TFR), # p = 0, d= 2, q= 1
+  #arima_021 = ARIMA(TFR ~ pdq(0, 2, 1)), removed because auto
+  arima_120 = ARIMA(TFR ~ pdq(1, 2, 0)),
+  arima_121 = ARIMA(TFR ~ pdq(1, 2, 1))
+)
+
+gg_tsresiduals(tlb_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TLB ARIMA(0,1,0)") 
+
+gg_tsresiduals(tlb_fit %>% select(arima_110)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,0)")
+
+gg_tsresiduals(tlb_fit %>% select(arima_111)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,1)")
+
+gg_tsresiduals(tfr_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TFR ARIMA(0,2,1)")
+
+gg_tsresiduals(tfr_fit %>% select(arima_120)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,0)")
+
+gg_tsresiduals(tfr_fit %>% select(arima_121)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,1)")
+
+
+# For the TLB models, the residual series appear broadly random, with the main
+# exception being a pronounced spike around 1988. A similar feature is visible in
+# the TFR residuals, although it is less pronounced. This is consistent with the
+# original time series plots, where the movement around 1988 is relatively larger
+# for TLB than for TFR.
+
+# The residual ACFs show only minor differences across the candidate models within
+# each series. However, when comparing across series, the TFR models tend to show
+# slightly larger autocorrelations on average than the TLB models, suggesting that
+# more residual dependence remains in the TFR fits.
+
+# The residual distributions do not appear severely skewed for any of the models.
+
+# Inspection of residual plots alone did not much insights in regards to distinguishing,
+# better or worse fits based on parameter choice for the ARIMA models. So I decided
+# to runs some L Jung box tests at lag 10 as well as looking at the results from
+# glance to get a better insight.
+
+
+augment(tlb_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 0) #p=.702
+
+augment(tlb_fit %>% select(arima_110)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1) #p=.663
+
+augment(tlb_fit %>% select(arima_111)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2) #p=.518
+
+augment(tfr_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1) #p=.236
+
+augment(tfr_fit %>% select(arima_120)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1) #p=.0959
+
+augment(tfr_fit %>% select(arima_121)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2) #p=.320
+
+glance(tlb_fit)
+glance(tfr_fit)
+
+# Inspection of the residual plots alone did not provide much basis for clearly
+# distinguishing between the ARIMA models. To compare the candidate models more
+# formally, Ljung–Box tests were applied at lag 10 and the model summaries from
+# glance() were also examined.
+
+# For the TLB models, all Ljung–Box p-values were comfortably above 0.05,
+# suggesting no strong evidence of remaining residual autocorrelation at lag 10.
+# Among these, ARIMA(0,1,0) performed best according to AIC, AICc, and BIC,
+# although the differences relative to ARIMA(1,1,0) were fairly small.
+# This suggests that the simpler ARIMA(0,1,0) model is a reasonable candidate
+# for TLB.
+
+# For the TFR models, all Ljung–Box p-values also remained above 0.05, although
+# ARIMA(1,2,0) produced the weakest result, with a p-value closer to the rejection
+# threshold. Comparing the information criteria, ARIMA(0,2,1) had the lowest
+# AIC, AICc, and BIC, with ARIMA(1,2,1) close behind. This suggests that
+# ARIMA(0,2,1) is the strongest candidate among the models considered for TFR,
+# while ARIMA(1,2,1) may also remain a plausible alternative.
+
+
+
+
+
