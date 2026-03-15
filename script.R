@@ -67,3 +67,24 @@ ggplot(data_wide, aes(x = Year)) +
 # The presence trend is easy to spot via visual inspection of this dual axis graph
 # Since the data is not monthly or quarterly we are unlikely to spot any seasonal trends
 
+
+# To further understand the dependence structure of both time series,
+# I've decided to plot and analyse the partial auto correlation function and
+# auto correlation functions
+
+tlb %>% ACF(TLB) %>% autoplot() + labs(title = "ACF of TLB")
+tlb %>% PACF(TLB) %>% autoplot() + labs(title = "PACF of TLB")
+
+tfr %>% ACF(TFR) %>% autoplot() + labs(title = "ACF of TFR")
+tfr %>% PACF(TFR) %>% autoplot() + labs(title = "PACF of TFR")
+
+# The ACFs for both time series show a substantial number of autocorrelations 
+# outside the 95% significance bounds. This supports the earlier conclusion from 
+# visual inspection that both series are non-stationary. In particular, both ACFs 
+# decay slowly across many lags, which is consistent with strong persistence in 
+# trending series. The TLB ACF appears to decay slightly faster than the TFR ACF.
+
+# The PACFs for both time series show a significant value at lag 1, followed by 
+# non-significant values at higher lags. This suggests that most of the direct 
+# dependence is concentrated at lag 1.
+
