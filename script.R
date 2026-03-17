@@ -88,3 +88,79 @@ tfr %>% PACF(TFR) %>% autoplot() + labs(title = "PACF of TFR")
 # non-significant values at higher lags. This suggests that most of the direct 
 # dependence is concentrated at lag 1.
 
+
+
+# Next differencing was used to transform the annual series into year-to-year 
+# changes, reducing the effect of the long-run trend and allowing the remaining 
+# temporal dependence to be assessed more clearly.
+
+# To determine the appropriate number of differences, I ran a formal test and
+# applied the results.
+
+tlb %>% features(TLB, unitroot_ndiffs) # = 1
+tfr %>% features(TFR, unitroot_ndiffs) # = 2
+
+
+tlb_differenced <- tlb %>%
+  mutate(D_TLB = difference(TLB, lag = 1)) %>%
+  filter(!is.na(D_TLB))
+
+tfr_differenced <- tfr %>%
+  mutate(
+    D_TFR = difference(TFR, lag = 1),
+    DD_TFR = difference(D_TFR, lag = 1)
+  ) %>%
+  filter(!is.na(DD_TFR))
+
+# differenced series plots
+autoplot(tlb_differenced, D_TLB) +
+  labs(title = "First-differenced TLB", y = "Change in TLB")
+
+autoplot(tfr_differenced, DD_TFR) +
+  labs(title = "Second-differenced TFR", y = "Second difference in TFR")
+
+# Upon visual inspection of these graphs, the both series seemed shows promising results
+# for their respected number of recommended differences.
+# It has appeared to mostly remove the trend seen previously, and aside from the spike
+# observed in 1988, the fluctuations appear mostly random.
+
+# Next looking at the ACFs and PACFs
+
+tlb_differenced %>%
+  ACF(D_TLB) %>%
+  autoplot() +
+  labs(title = "ACF of first-differenced TLB")
+
+tfr_differenced %>%
+  ACF(DD_TFR) %>%
+  autoplot() +
+  labs(title = "ACF of second-differenced TFR")
+
+tlb_differenced %>%
+  PACF(D_TLB) %>%
+  autoplot() +
+  labs(title = "PACF of first-differenced TLB")
+
+
+tfr_differenced %>%
+  PACF(DD_TFR) %>%
+  autoplot() +
+  labs(title = "PACF of second-differenced TFR")
+
+# The ACFs of the differenced TLB and TFR have largely improved, with fewer values
+# outside the 95% confidence bounds.
+
+# The PACFs echo the ACF results, with both series responding better to differencing. 
+# In both cases, the lag structure is more irregular than in  the original series, 
+# though the TFR still shows some values outside the confidence bounds.
+
+# I wanted to confirm my visual observations by running another formal test
+
+tlb %>% features(TLB, unitroot_kpss) # p = 0.01
+tlb_differenced %>% features(D_TLB, unitroot_kpss) # p = 0.1
+
+tfr %>% features(TFR, unitroot_kpss) # p = 0.01
+tfr_differenced %>% features(DD_TFR, unitroot_kpss) # p = 0.1
+
+# Overall, these results suggest that differencing is likely to be more appropriate
+# than modelling the raw series directly, particularly for TLB.
