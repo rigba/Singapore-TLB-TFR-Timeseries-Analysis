@@ -170,6 +170,12 @@ tfr_differenced %>% features(DD_TFR, unitroot_kpss) # p = 0.1
 # So I tried some different variations of autoregressive and moving average
 # parameters, as well as looking at what auto arima parameters might return.
 
+tlb_train <- tlb %>%
+  filter(Year <= 2012)
+
+tfr_train <- tfr %>%
+  filter(Year <= 2012)
+
 tlb_fit <- tlb_train %>% model(
   arima_auto = ARIMA(TLB), # p= 0, d= 1, q= 0
   arima_110 = ARIMA(TLB ~ pdq(1, 1, 0)),
@@ -228,3 +234,5 @@ gg_tsresiduals(tfr_fit %>% select(arima_121)) +
 
 augment(tfr_fit %>% select(arima_121)) %>%
   features(.resid, ljung_box, lag = 10, dof = 2)
+
+
