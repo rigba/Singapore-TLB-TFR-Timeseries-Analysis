@@ -164,3 +164,67 @@ tfr_differenced %>% features(DD_TFR, unitroot_kpss) # p = 0.1
 
 # Overall, these results suggest that differencing is likely to be more appropriate
 # than modelling the raw series directly, particularly for TLB.
+
+# Next I moved onto modelling the time series. Given my previous result,
+# if I'm trying to fit an ARIMA model I'm excepting a difference of 1 and 2.
+# So I tried some different variations of autoregressive and moving average
+# parameters, as well as looking at what auto arima parameters might return.
+
+tlb_fit <- tlb_train %>% model(
+  arima_auto = ARIMA(TLB), # p= 0, d= 1, q= 0
+  arima_110 = ARIMA(TLB ~ pdq(1, 1, 0)),
+  #arima_011 = ARIMA(TLB ~ pdq(0, 1, 1)), removed because auto
+  arima_111 = ARIMA(TLB ~ pdq(1, 1, 1))
+) 
+
+tfr_fit <- tfr_train %>% model(
+  arima_auto = ARIMA(TFR), # p = 0, d= 2, q= 1
+  #arima_021 = ARIMA(TFR ~ pdq(0, 2, 1)), removed because auto
+  arima_120 = ARIMA(TFR ~ pdq(1, 2, 0)),
+  arima_121 = ARIMA(TFR ~ pdq(1, 2, 1))
+)
+
+
+glance(tlb_fit)
+glance(tfr_fit)
+
+gg_tsresiduals(tlb_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TLB ARIMA(0,1,0)")
+
+augment(tlb_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 0)
+
+
+gg_tsresiduals(tlb_fit %>% select(arima_110)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,0)")
+
+augment(tlb_fit %>% select(arima_110)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tlb_fit %>% select(arima_111)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,1)")
+
+augment(tlb_fit %>% select(arima_111)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TFR ARIMA(0,2,1)")
+
+augment(tfr_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_120)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,0)")
+
+augment(tfr_fit %>% select(arima_120)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_121)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,1)")
+
+augment(tfr_fit %>% select(arima_121)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2)
