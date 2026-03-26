@@ -235,4 +235,18 @@ gg_tsresiduals(tfr_fit %>% select(arima_121)) +
 augment(tfr_fit %>% select(arima_121)) %>%
   features(.resid, ljung_box, lag = 10, dof = 2)
 
+# Visual analysis of the tsresidual plots return promising results across both 
+# time series in terms of fitting success. In all models across both time series
+# we observe breaks of dependence structure around lag h=12 for ACF values. Innovation
+# residuals all seem to break structure around 1988, which supports the hypothesis
+# of an anomaly around this time peroid. In terms of residual skews, all seem relatively
+# normally distributed except for outliers at +10000 for all TLB models.
+
+# In terms of statistical tests, For TLB, all three models pass the 
+# Ljung-Box test, but ARIMA(0,1,0) has the best AIC/AICc/BIC. For TFR, ARIMA(0,2,1)
+# has the best AIC/AICc/BIC, while all models have acceptable Ljung-Box results, 
+# though ARIMA(1,2,0) is the weakest on residual independence.
+
+# Overall, glance() favours ARIMA(0,1,0) for TLB and ARIMA(0,2,1) for TFR, while the 
+#residual plots suggest the more complex models may fit slightly more cleanly visually.
 
