@@ -250,3 +250,110 @@ augment(tfr_fit %>% select(arima_121)) %>%
 # Overall, glance() favours ARIMA(0,1,0) for TLB and ARIMA(0,2,1) for TFR, while the 
 #residual plots suggest the more complex models may fit slightly more cleanly visually.
 
+# Average 1988 abnormality with neighbouring years.
+
+tlb <- tlb %>%
+  mutate(
+    TLB = if_else(
+      Year == 1988,
+      (TLB[Year == 1987] + TLB[Year == 1989]) / 2,
+      TLB
+    )
+  )
+
+tfr <- tfr %>%
+  mutate(
+    TFR = if_else(
+      Year == 1988,
+      (TFR[Year == 1987] + TFR[Year == 1989]) / 2,
+      TFR
+    )
+  )
+
+
+tlb_train <- tlb %>%
+  filter(Year <= 2012)
+
+tfr_train <- tfr %>%
+  filter(Year <= 2012)
+
+tlb_fit <- tlb_train %>% model(
+  arima_auto = ARIMA(TLB), # p= 0, d= 1, q= 0
+  arima_110 = ARIMA(TLB ~ pdq(1, 1, 0)),
+  #arima_011 = ARIMA(TLB ~ pdq(0, 1, 1)), removed because auto
+  arima_111 = ARIMA(TLB ~ pdq(1, 1, 1))
+) 
+
+tfr_fit <- tfr_train %>% model(
+  arima_auto = ARIMA(TFR), # p = 0, d= 2, q= 1
+  #arima_021 = ARIMA(TFR ~ pdq(0, 2, 1)), removed because auto
+  arima_120 = ARIMA(TFR ~ pdq(1, 2, 0)),
+  arima_121 = ARIMA(TFR ~ pdq(1, 2, 1))
+)
+
+
+glance(tlb_fit)
+glance(tfr_fit)
+
+gg_tsresiduals(tlb_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TLB ARIMA(0,1,0)")
+
+augment(tlb_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 0)
+
+
+gg_tsresiduals(tlb_fit %>% select(arima_110)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,0)")
+
+augment(tlb_fit %>% select(arima_110)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tlb_fit %>% select(arima_111)) +
+  labs(title = "Residuals: TLB ARIMA(1,1,1)")
+
+augment(tlb_fit %>% select(arima_111)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_auto)) +
+  labs(title = "Residuals: TFR ARIMA(0,2,1)")
+
+augment(tfr_fit %>% select(arima_auto)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_120)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,0)")
+
+augment(tfr_fit %>% select(arima_120)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 1)
+
+
+gg_tsresiduals(tfr_fit %>% select(arima_121)) +
+  labs(title = "Residuals: TFR ARIMA(1,2,1)")
+
+augment(tfr_fit %>% select(arima_121)) %>%
+  features(.resid, ljung_box, lag = 10, dof = 2)
+
+# Visual analysis of tsresiduals plots when compared to non-1988 plots show 
+# marginal improvements in all models across the innovation residuals, ACF 
+# values and residual skews. Particularly the Innovation residuals over time plots
+# we observe no break of structure at year 1988, ACF values around lag 12 are closer
+# to zero and in the TLB residual skews the outliers at 10000 are no longer present.
+
+# # In terms of statistical tests, averaging the 1988 outlier year does not alter
+# the overall differencing conclusions, with TLB still requiring 1 difference and
+# TFR still requiring 2 differences.
+
+# For TLB, all three models continue to pass the Ljung-Box test, but
+# their p-values increase after smoothing the 1988 value, indicating residuals that
+# are still consistent with white noise. For TFR, model fit statistics also improve 
+# overall, although the Ljung-Box results improve less
+
+# Overall, the formal test results and visual inspections suggest that averaging 
+# out the 1988 anomaly does not change the preferred ARIMA model parameters, but 
+# it does lead to marginal improvement in residual behaviour and better fit 
+# statistics, particularly for the TLB models.
+
+
