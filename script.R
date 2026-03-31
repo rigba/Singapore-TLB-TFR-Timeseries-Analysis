@@ -64,8 +64,11 @@ ggplot(data_wide, aes(x = Year)) +
   )
 
 
-# The presence trend is easy to spot via visual inspection of this dual axis graph
-# Since the data is not monthly or quarterly we are unlikely to spot any seasonal trends
+# Both series show a notable downwards trend over time, with a pronounced temporary break of 
+# structure at year 1988. Since the data is annual, we generally wouldn't expect to see seasonal 
+# trends. However due to a well documented cultural phenomenon, we tend to see modest spikes at 
+# 12 year intervals from 1964 onwards. Superstitions around timing child births at specific 
+# Chinese zodiac years, in particular the dragon year, is a well documented phenomenon.
 
 
 # To further understand the dependence structure of both time series,
@@ -88,14 +91,15 @@ tfr %>% PACF(TFR) %>% autoplot() + labs(title = "PACF of TFR")
 # non-significant values at higher lags. This suggests that most of the direct 
 # dependence is concentrated at lag 1.
 
+# Notably, the 12-year effect is visible in the raw plot, but it is not strong or regular 
+# enough to overbear the autocorrelation structure of the raw series.
 
 
-# Next differencing was used to transform the annual series into year-to-year 
-# changes, reducing the effect of the long-run trend and allowing the remaining 
-# temporal dependence to be assessed more clearly.
-
-# To determine the appropriate number of differences, I ran a formal test and
-# applied the results.
+# Because this persistent trend can mask the underlying dependence structure, differencing 
+# was applied to each series. This transforms the data into year-to-year changes, helping 
+# to stabilise the mean and making the autocorrelation patterns easier to interpret.
+# The number of differences required was then assessed using a unitroot_ndiffs test,
+# applying the relevant transformations, and finally generating a simple time plot.
 
 tlb %>% features(TLB, unitroot_ndiffs) # = 1
 tfr %>% features(TFR, unitroot_ndiffs) # = 2
@@ -119,10 +123,10 @@ autoplot(tlb_differenced, D_TLB) +
 autoplot(tfr_differenced, DD_TFR) +
   labs(title = "Second-differenced TFR", y = "Second difference in TFR")
 
-# Upon visual inspection of these graphs, the both series seemed shows promising results
-# for their respected number of recommended differences.
-# It has appeared to mostly remove the trend seen previously, and aside from the spike
-# observed in 1988, the fluctuations appear mostly random.
+# Upon visual inspection, both series show promising results for their respected number 
+# of recommended differences. The differencing has appeared to mostly remove the trend 
+# seen previously, and aside from the spike observed in 1988, the fluctuations appear 
+# mostly random.
 
 # Next looking at the ACFs and PACFs
 
@@ -147,12 +151,16 @@ tfr_differenced %>%
   autoplot() +
   labs(title = "PACF of second-differenced TFR")
 
-# The ACFs of the differenced TLB and TFR have largely improved, with fewer values
-# outside the 95% confidence bounds.
+# Generally the ACFs of the differenced TLB and TFR have largely improved, with fewer values
+# outside the 95% confidence bounds. The PACFs echo the ACF results, with both series 
+# responding better to differencing. In both cases, the lag structure is more irregular 
+# than in the original series, though the TFR still shows some values outside the 
+# confidence bounds. 
 
-# The PACFs echo the ACF results, with both series responding better to differencing. 
-# In both cases, the lag structure is more irregular than in  the original series, 
-# though the TFR still shows some values outside the confidence bounds.
+# In particular, for all series we see significant deviations at or around lag 12 for 
+# ACF and PACF values. This result strengthens our hypothesis that the trend component of 
+# both series was overbearing our ability to spot the Chinese zodiac birth timing 
+# phenomenon previously discussed.
 
 # I wanted to confirm my visual observations by running another formal test
 
@@ -165,10 +173,11 @@ tfr_differenced %>% features(DD_TFR, unitroot_kpss) # p = 0.1
 # Overall, these results suggest that differencing is likely to be more appropriate
 # than modelling the raw series directly, particularly for TLB.
 
-# Next I moved onto modelling the time series. Given my previous result,
-# if I'm trying to fit an ARIMA model I'm excepting a difference of 1 and 2.
-# So I tried some different variations of autoregressive and moving average
-# parameters, as well as looking at what auto arima parameters might return.
+# I fitted a range of candidate ARIMA models to the training subseries (1960-2012) and 
+# examined their residual diagnostics. This was done to assess whether the fitted models 
+# had adequately captured the temporal dependence remaining after differencing. In 
+# particular, I considered the innovation residual plots, residual ACF values, residual 
+# histograms, Ljung-Box test results, and the information criteria AIC, AICc and BIC.
 
 tlb_train <- tlb %>%
   filter(Year <= 2012)
@@ -235,22 +244,35 @@ gg_tsresiduals(tfr_fit %>% select(arima_121)) +
 augment(tfr_fit %>% select(arima_121)) %>%
   features(.resid, ljung_box, lag = 10, dof = 2)
 
-# Visual analysis of the tsresidual plots return promising results across both 
-# time series in terms of fitting success. In all models across both time series
-# we observe breaks of dependence structure around lag h=12 for ACF values. Innovation
-# residuals all seem to break structure around 1988, which supports the hypothesis
-# of an anomaly around this time peroid. In terms of residual skews, all seem relatively
-# normally distributed except for outliers at +10000 for all TLB models.
+# The residual diagnostics return generally promising results across both time series. 
+# For all fitted models, the innovation residuals fluctuate in a random looking pattern 
+# around zero for most of the sample, though each model shows a noticeable disturbance 
+# around 1988. The residual ACF plots further suggest that the temporal dependence within 
+# the series has been substantially accounted for by the fitted models. However, for nearly 
+# all models there remains some deviation around lag 12, indicating that traces of the 
+# apparent 12-year birth timing phenomenon may still persist even after differencing and 
+# model fitting. 
 
-# In terms of statistical tests, For TLB, all three models pass the 
-# Ljung-Box test, but ARIMA(0,1,0) has the best AIC/AICc/BIC. For TFR, ARIMA(0,2,1)
-# has the best AIC/AICc/BIC, while all models have acceptable Ljung-Box results, 
-# though ARIMA(1,2,0) is the weakest on residual independence.
+# The residual histograms also appear broadly acceptable. In most cases the residuals are 
+# approximately centred and reasonably symmetric, suggesting that the normality assumption 
+# is not severely violated. The main exception is for the TLB models, where a small number 
+# of large positive residuals around +10000, remain visible.
 
-# Overall, glance() favours ARIMA(0,1,0) for TLB and ARIMA(0,2,1) for TFR, while the 
-#residual plots suggest the more complex models may fit slightly more cleanly visually.
+# The formal diagnostic results support these visual impressions also. For TLB, all three 
+# candidate models return acceptable Ljung-Box results, suggesting that the residuals are 
+# broadly consistent with white noise. Among these, ARIMA(0,1,0) is preferred by AIC, AICc 
+# and BIC. For TFR, all three models also produce acceptable Ljung-Box results, although 
+# ARIMA(1,2,0) appears weakest in terms of residual independence. According to AIC, AICc 
+# and BIC, ARIMA(0,2,1) is the preferred model for TFR. At this preliminary stage 
+# ARIMA(0,1,0) and ARIMA(0,2,1) appear to be the strongest candidates for further forecasting 
+# analysis.
 
-# Average 1988 abnormality with neighbouring years.
+
+# After some consideration of the previous analysis I decided to further investigate the specific 
+# "mini baby boom" around 1988. This led me to develop the hypothesis that the change in policy 
+# coinciding with the Chinese zodiac dragon year timing caused a temporary spike in children 
+# being born. This prompted me to redo the analysis by modifying both series such that their 
+# values for 1988 were an average of 1987 and 1989 like so:
 
 tlb <- tlb %>%
   mutate(
@@ -336,24 +358,21 @@ gg_tsresiduals(tfr_fit %>% select(arima_121)) +
 augment(tfr_fit %>% select(arima_121)) %>%
   features(.resid, ljung_box, lag = 10, dof = 2)
 
-# Visual analysis of tsresiduals plots when compared to non-1988 plots show 
-# marginal improvements in all models across the innovation residuals, ACF 
-# values and residual skews. Particularly the Innovation residuals over time plots
-# we observe no break of structure at year 1988, ACF values around lag 12 are closer
-# to zero and in the TLB residual skews the outliers at 10000 are no longer present.
+# Visual analysis of the tsresiduals plots, compared with the non-1988 averaged plots, show 
+# modest improvements across all models in the innovation residuals, ACF values, and residual 
+# skews. In particular, the innovation residuals over time no longer show a structural break 
+# around 1988, the ACF values around lag 12 are closer to zero, and the outliers at 10,000 
+# in the TLB residual skew plots are no longer present.
 
-# # In terms of statistical tests, averaging the 1988 outlier year does not alter
-# the overall differencing conclusions, with TLB still requiring 1 difference and
-# TFR still requiring 2 differences.
+# In terms of the statistical tests, averaging the 1988 outlier year does not change the 
+# overall differencing conclusions: TLB still requires one difference, while TFR still 
+# requires two differences.
 
-# For TLB, all three models continue to pass the Ljung-Box test, but
-# their p-values increase after smoothing the 1988 value, indicating residuals that
-# are still consistent with white noise. For TFR, model fit statistics also improve 
-# overall, although the Ljung-Box results improve less
+# For TLB, all three models continue to pass the Ljung-Box test, but their p-values increase 
+# after smoothing the 1988 value, indicating residuals that remain consistent with white noise. 
+# For TFR, the model fit statistics also improve overall, although the Ljung-Box results 
+# improve less noticeably.
 
-# Overall, the formal test results and visual inspections suggest that averaging 
-# out the 1988 anomaly does not change the preferred ARIMA model parameters, but 
-# it does lead to marginal improvement in residual behaviour and better fit 
-# statistics, particularly for the TLB models.
-
-
+# Overall, the formal test results and visual inspections suggest that averaging out the 1988 
+# anomaly does not change the preferred ARIMA model parameters, but it does lead to modest 
+# improvements in residual behaviour and fit statistics, particularly for the TLB models.
